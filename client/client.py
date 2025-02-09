@@ -7,9 +7,41 @@ HOST = "127.0.0.1"
 PORT = 54400
 
 def send_request(sock, request):
-    """Helper function to send a JSON request and receive a response."""
-    sock.sendall(json.dumps(request).encode("utf-8"))
-    return json.loads(sock.recv(1024).decode("utf-8"))
+    """Sends a request to the server and properly handles multiple JSON responses."""
+    sock.sendall((json.dumps(request) + "\n").encode("utf-8"))  # Ensure newline separation
+
+    response_data = sock.recv(4096).decode("utf-8")  # Read as much data as possible
+
+    responses = response_data.strip().split("\n")  # ✅ Split multiple responses
+    parsed_responses = [json.loads(resp) for resp in responses]  # ✅ Parse each JSON separately
+
+    return parsed_responses[0] if len(parsed_responses) == 1 else parsed_responses  # ✅ Return appropriately
+
+
+import threading
+import select
+import sys
+
+# def listen_for_messages(sock):
+#     """Continuously listens for incoming messages from the server without blocking user input."""
+#     while True:
+#         try:
+#             # Use select to check if data is available to read (timeout of 1 second)
+#             ready_to_read, _, _ = select.select([sock], [], [], 1)
+#             if sock in ready_to_read:
+#                 response_data = sock.recv(1024).decode("utf-8")
+#                 if not response_data.strip():  # Ignore empty responses
+#                     continue
+
+#                 response = json.loads(response_data)
+#                 if response.get("type") == "message":
+#                     sys.stdout.write(f"\n New message from {response['from']}: {response['message']}\n> ")
+#                     sys.stdout.flush()  # Ensure prompt reappears correctly
+
+#         except (json.JSONDecodeError, ConnectionResetError, BrokenPipeError):
+#             print("\n Connection lost. Exiting...")
+#             break
+
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     s.connect((HOST, PORT))
@@ -25,6 +57,10 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 
         if response["status"] == "success":
             break
+        # Start the background listener thread
+    
+    # listener_thread = threading.Thread(target=listen_for_messages, args=(s,), daemon=True)
+    # listener_thread.start()
 
     while True:
         action = input("Choose action: [SEND, READ, EXIT, LIST]: ").upper()

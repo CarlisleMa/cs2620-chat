@@ -104,11 +104,13 @@ def handle_send_message(client_socket, request):
                    (sender, recipient, message))
     conn.commit()
 
+    send_response(client_socket, {"status": "success", "message": "Message stored and delivered if recipient is online"})
+
     # If recipient is online, deliver immediately
     if recipient in clients:
         send_response(clients[recipient], {"type": "message", "from": sender, "message": message})
 
-    send_response(client_socket, {"status": "success", "message": "Message stored and delivered if recipient is online"})
+
 
 def handle_read_messages(client_socket, request):
     """Retrieves undelivered messages, allowing users to specify how many they want."""
