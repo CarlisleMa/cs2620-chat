@@ -90,7 +90,7 @@ def handle_login(client_socket, request):
         send_response(client_socket, {"status": "error", "message": "Invalid username or password"})
 
 def handle_send_message(client_socket, request):
-    """Handles sending a message."""
+    """Handles sending a message, storing it in the database, and delivering instantly if the recipient is online."""
     sender = request.get("sender")
     recipient = request.get("recipient")
     message = request.get("message")
@@ -99,35 +99,52 @@ def handle_send_message(client_socket, request):
         send_response(client_socket, {"status": "error", "message": "Missing sender, recipient, or message"})
         return
 
-    # Store message in the database
-    cursor.execute("INSERT INTO messages (sender, recipient, message) VALUES (?, ?, ?)", (sender, recipient, message))
+    # Store message in SQLite
+    cursor.execute("INSERT INTO messages (sender, recipient, message, delivered) VALUES (?, ?, ?, 0)", 
+                   (sender, recipient, message))
     conn.commit()
 
-    # If recipient is online, send message instantly
+    # If recipient is online, deliver immediately
     if recipient in clients:
         send_response(clients[recipient], {"type": "message", "from": sender, "message": message})
 
-    send_response(client_socket, {"status": "success", "message": "Message sent"})
+    send_response(client_socket, {"status": "success", "message": "Message stored and delivered if recipient is online"})
 
 def handle_read_messages(client_socket, request):
-    """Handles retrieving unread messages."""
+    """Retrieves undelivered messages, allowing users to specify how many they want."""
     username = request.get("username")
+    limit = int(request.get("limit", 10))  # Default: 10 messages
 
     if not username:
         send_response(client_socket, {"status": "error", "message": "Username required"})
         return
 
-    # Retrieve unread messages
-    cursor.execute("SELECT id, sender, message, timestamp FROM messages WHERE recipient = ? AND delivered = 0", (username,))
+    cursor.execute("SELECT id, sender, message, timestamp FROM messages WHERE recipient = ? AND delivered = 0 ORDER BY id ASC LIMIT ?", 
+                   (username, limit))
     messages = cursor.fetchall()
 
-    # Mark messages as delivered
-    cursor.execute("UPDATE messages SET delivered = 1 WHERE recipient = ?", (username,))
-    conn.commit()
+    # Mark retrieved messages as delivered
+    message_ids = [msg[0] for msg in messages]
+    if message_ids:
+        cursor.execute(f"UPDATE messages SET delivered = 1 WHERE id IN ({','.join(['?']*len(message_ids))})", message_ids)
+        conn.commit()
 
-    # Format and send messages to the client
-    message_list = [{"from": msg[1], "message": msg[2], "timestamp": msg[3]} for msg in messages]
+    # Format messages to send to client
+    message_list = [{"id": msg[0], "from": msg[1], "message": msg[2], "timestamp": msg[3]} for msg in messages]
+
     send_response(client_socket, {"status": "success", "messages": message_list})
+
+
+def handle_list_accounts(client_socket, request):
+    """Handles listing accounts with optional pattern matching."""
+    pattern = request.get("pattern", "%")  # Default: show all accounts
+    pattern = f"%{pattern}%"  # Wildcard search
+
+    cursor.execute("SELECT username FROM users WHERE username LIKE ?", (pattern,))
+    accounts = [row[0] for row in cursor.fetchall()]
+
+    send_response(client_socket, {"status": "success", "accounts": accounts})
+
 
 # ---------------------------- Socket Server ----------------------------
 def accept_wrapper(sock):
@@ -165,6 +182,8 @@ def service_connection(key, mask):
             handle_send_message(sock, request)
         elif command == "READ":
             handle_read_messages(sock, request)
+        elif command == "LIST":  # 🆕 Add handling for "LIST" command
+            handle_list_accounts(sock, request)
 
 if __name__ == "__main__":
     # Start server
