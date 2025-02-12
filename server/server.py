@@ -95,6 +95,15 @@ def handle_login(client_socket, request):
     else:
         send_response(client_socket, {"status": "error", "message": "Invalid username or password"})
 
+def log_message_size(sender, recipient, message):
+    """Logs the size of a sent message."""
+    sender_bytes = len(sender.encode("utf-8"))
+    recipient_bytes = len(recipient.encode("utf-8"))
+    message_bytes = len(message.encode("utf-8"))
+    
+    total_size = sender_bytes + recipient_bytes + message_bytes
+    print(f"Message Size: {total_size} bytes | {sender} -> {recipient}: {message}")
+
 def handle_send_message(client_socket, request):
     """Handles sending a message, delivering instantly if the recipient is online or storing it if they are offline."""
     sender = request.get("sender")
@@ -109,6 +118,8 @@ def handle_send_message(client_socket, request):
     cursor.execute("INSERT INTO messages (sender, recipient, message, delivered) VALUES (?, ?, ?, 0)", 
                    (sender, recipient, message))
     conn.commit()
+
+    log_message_size(sender, recipient, message)  # Log the size of the message
 
     # Check if the recipient is online
     if recipient in clients:
@@ -148,7 +159,12 @@ def handle_read_messages(client_socket, request):
     # Format messages to send to client
     message_list = [{"id": msg[0], "from": msg[1], "message": msg[2], "timestamp": msg[3]} for msg in messages]
 
+    # Log message sizes
+    for msg in message_list:
+        log_message_size(msg["from"], username, msg["message"])
+
     send_response(client_socket, {"status": "success", "messages": message_list})
+
 
 def handle_list_accounts(client_socket, request):
     """Handles listing accounts with optional pattern matching."""
