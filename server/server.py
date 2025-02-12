@@ -150,7 +150,6 @@ def handle_read_messages(client_socket, request):
 
     send_response(client_socket, {"status": "success", "messages": message_list})
 
-
 def handle_list_accounts(client_socket, request):
     """Handles listing accounts with optional pattern matching."""
     pattern = request.get("pattern", "%")  # Default: show all accounts
@@ -195,7 +194,6 @@ def handle_list_messages(client_socket, request):
 
     send_response(client_socket, {"status": "success", "messages": message_list})
 
-
 def handle_delete_messages(client_socket, request):
     """Handles deleting a specific message or multiple messages."""
     username = request.get("username")
@@ -215,6 +213,29 @@ def handle_delete_messages(client_socket, request):
 
     send_response(client_socket, {"status": "success", "message": "Messages deleted successfully"})
 
+def handle_delete_account(client_socket, request):
+    """Handles account deletion, removing user data and messages."""
+    username = request.get("username")
+
+    if not username:
+        send_response(client_socket, {"status": "error", "message": "Username required"})
+        return
+
+    # First, delete all messages associated with the user
+    cursor.execute("DELETE FROM messages WHERE sender = ? OR recipient = ?", (username, username))
+
+    # Then, delete the user from the database
+    cursor.execute("DELETE FROM users WHERE username = ?", (username,))
+    conn.commit()
+
+    # Remove user from active connections if they are online
+    if username in clients:
+        del clients[username]
+
+    send_response(client_socket, {"status": "success", "message": "Account deleted successfully. You are now logged out."})
+
+    # Close the connection
+    client_socket.close()
 
 
 def handle_binary_message(client_socket):
@@ -290,6 +311,9 @@ def service_connection(key, mask):
             handle_list_messages(sock, request)
         elif command == "DELETE":
             handle_delete_messages(sock, request)
+        elif command == "DELETE_ACCOUNT":
+            handle_delete_account(sock, request)
+
 
 
 

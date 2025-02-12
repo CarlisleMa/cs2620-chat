@@ -107,7 +107,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             break
 
     while True:
-        action = input("Choose action: [SEND, READ, EXIT, LIST, DELETE]: ").upper()
+        action = input("Choose action: [SEND, READ, EXIT, LIST, DELETE, DELETE_ACCOUNT]: ").upper()
 
         if action == "SEND":
             recipient = input("Recipient: ")
@@ -153,6 +153,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 print("Registered Users:", response["accounts"])
             else:
                 print("Error retrieving accounts.")
+        
         elif action == "DELETE":
             print("Listing all messages for deletion...")
 
@@ -180,6 +181,28 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             # Send delete request
             response = send_request(s, {"command": "DELETE", "username": username, "message_ids": message_ids})
             print(response["message"])
+        
+        elif action == "DELETE_ACCOUNT":
+            confirm = input("Are you sure you want to delete your account? This action is irreversible. (yes/no): ").strip().lower()
+            
+            if confirm != "yes":
+                print("Account deletion canceled.")
+                continue
+
+            # Send delete account request
+            response = send_request(s, {"command": "DELETE_ACCOUNT", "username": username})
+            
+            print(response["message"])
+
+            if response["status"] == "success":
+                print("Your account has been permanently deleted.")
+                
+                send_request(s, {"command": "EXIT", "username": username})
+
+                s.close()  # Close the socket
+                print("Client closed.")
+                break  # Exit the client
+
 
 
 
