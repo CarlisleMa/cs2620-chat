@@ -4,6 +4,7 @@ import sqlite3
 import json
 import bcrypt
 import types
+import struct
 
 # Initialize selector for handling multiple clients
 sel = selectors.DefaultSelector()
@@ -146,6 +147,35 @@ def handle_list_accounts(client_socket, request):
     accounts = [row[0] for row in cursor.fetchall()]
 
     send_response(client_socket, {"status": "success", "accounts": accounts})
+
+
+def handle_binary_message(client_socket):
+    """Handles messages in a custom binary format."""
+    try:
+        # Read fixed-size header (8 bytes: sender length, recipient length, message length)
+        header = client_socket.recv(8)
+        if not header:
+            return
+
+        sender_len, recipient_len, message_len = struct.unpack("!BBB", header)
+
+        # Read sender, recipient, and message
+        sender = client_socket.recv(sender_len).decode("utf-8")
+        recipient = client_socket.recv(recipient_len).decode("utf-8")
+        message = client_socket.recv(message_len).decode("utf-8")
+
+        # Store message in SQLite
+        cursor.execute("INSERT INTO messages (sender, recipient, message, delivered) VALUES (?, ?, ?, 0)", 
+                       (sender, recipient, message))
+        conn.commit()
+
+        # If recipient is online, deliver immediately
+        if recipient in clients:
+            clients[recipient].sendall(f"[{sender}] {message}".encode("utf-8"))
+
+    except Exception as e:
+        print(f"Binary message error: {e}")
+
 
 
 # ---------------------------- Socket Server ----------------------------

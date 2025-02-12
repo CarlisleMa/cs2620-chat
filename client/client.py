@@ -17,6 +17,16 @@ def send_request(sock, request):
 
     return parsed_responses[0] if len(parsed_responses) == 1 else parsed_responses  # ✅ Return appropriately
 
+def send_binary_message(sender, recipient, message):
+    """Send a message using the custom binary format."""
+    sender_bytes = sender.encode("utf-8")
+    recipient_bytes = recipient.encode("utf-8")
+    message_bytes = message.encode("utf-8")
+
+    header = struct.pack("!BBB", len(sender_bytes), len(recipient_bytes), len(message_bytes))
+
+    client_socket.sendall(header + sender_bytes + recipient_bytes + message_bytes)
+
 
 import threading
 import select
