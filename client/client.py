@@ -107,7 +107,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             break
 
     while True:
-        action = input("Choose action: [SEND, READ, EXIT, LIST]: ").upper()
+        action = input("Choose action: [SEND, READ, EXIT, LIST, DELETE]: ").upper()
 
         if action == "SEND":
             recipient = input("Recipient: ")
@@ -153,6 +153,35 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 print("Registered Users:", response["accounts"])
             else:
                 print("Error retrieving accounts.")
+        elif action == "DELETE":
+            print("Listing all messages for deletion...")
+
+            # Fetch all messages
+            response = send_request(s, {"command": "LIST_MESSAGES", "username": username})
+            messages = response.get("messages", [])
+
+            if not messages:
+                print("No messages to delete.")
+                continue
+
+            # Display messages with IDs and status
+            print("\nYour Messages:")
+            for msg in messages:
+                print(f"[ID: {msg['id']}] [{msg['timestamp']}] {msg['from']}: {msg['message']} (Status: {msg['status']})")
+
+            # Ask user which messages to delete
+            message_ids = input("Enter message IDs to delete (comma-separated): ").strip()
+            if not message_ids:
+                print("No messages selected for deletion.")
+                continue
+
+            message_ids = [msg_id.strip() for msg_id in message_ids.split(",")]
+
+            # Send delete request
+            response = send_request(s, {"command": "DELETE", "username": username, "message_ids": message_ids})
+            print(response["message"])
+
+
 
 
 

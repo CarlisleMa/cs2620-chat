@@ -172,6 +172,50 @@ def handle_exit(client_socket, request):
     send_response(client_socket, {"status": "success", "message": "User disconnected."})
     client_socket.close()  # Close the socket
 
+def handle_list_messages(client_socket, request):
+    """Retrieves all messages (read & unread) for a user."""
+    username = request.get("username")
+
+    if not username:
+        send_response(client_socket, {"status": "error", "message": "Username required"})
+        return
+
+    # Retrieve all messages for the user
+    cursor.execute("SELECT id, sender, message, timestamp, delivered FROM messages WHERE recipient = ? ORDER BY id ASC", 
+                   (username,))
+    messages = cursor.fetchall()
+
+    # Format messages to send to client
+    message_list = [
+        {
+            "id": msg[0], "from": msg[1], "message": msg[2], "timestamp": msg[3], "status": "Read" if msg[4] else "Unread"
+        }
+        for msg in messages
+    ]
+
+    send_response(client_socket, {"status": "success", "messages": message_list})
+
+
+def handle_delete_messages(client_socket, request):
+    """Handles deleting a specific message or multiple messages."""
+    username = request.get("username")
+    message_ids = request.get("message_ids")  # List of message IDs to delete
+
+    if not username or not message_ids:
+        send_response(client_socket, {"status": "error", "message": "Username and message IDs required"})
+        return
+
+    # Convert message IDs to integers (if received as strings)
+    message_ids = [int(msg_id) for msg_id in message_ids]
+
+    # Delete messages only if they belong to the user
+    cursor.execute(f"DELETE FROM messages WHERE id IN ({','.join(['?']*len(message_ids))}) AND recipient = ?", 
+                   message_ids + [username])
+    conn.commit()
+
+    send_response(client_socket, {"status": "success", "message": "Messages deleted successfully"})
+
+
 
 def handle_binary_message(client_socket):
     """Handles messages in a custom binary format."""
@@ -242,6 +286,11 @@ def service_connection(key, mask):
             handle_list_accounts(sock, request)
         elif command == "EXIT":
             handle_exit(sock, request)
+        elif command == "LIST_MESSAGES":
+            handle_list_messages(sock, request)
+        elif command == "DELETE":
+            handle_delete_messages(sock, request)
+
 
 
 if __name__ == "__main__":
