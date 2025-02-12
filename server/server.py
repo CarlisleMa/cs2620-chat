@@ -42,7 +42,12 @@ clients = {}
 # ---------------------------- Helper Functions ----------------------------
 def send_response(sock, response):
     """Send a JSON response to the client."""
-    sock.sendall(json.dumps(response).encode("utf-8"))
+    try:
+        response_str = json.dumps(response) + "\n"  # Ensure newline separation
+        sock.sendall(response_str.encode("utf-8"))
+    except BrokenPipeError:
+        print("Client disconnected before response could be sent.")
+
 
 def handle_register(client_socket, request):
     """Handles user registration."""
@@ -91,7 +96,7 @@ def handle_login(client_socket, request):
         send_response(client_socket, {"status": "error", "message": "Invalid username or password"})
 
 def handle_send_message(client_socket, request):
-    """Handles sending a message, storing it in the database, and delivering instantly if the recipient is online."""
+    """Handles sending a message, delivering instantly if the recipient is online or storing it if they are offline."""
     sender = request.get("sender")
     recipient = request.get("recipient")
     message = request.get("message")
@@ -100,18 +105,26 @@ def handle_send_message(client_socket, request):
         send_response(client_socket, {"status": "error", "message": "Missing sender, recipient, or message"})
         return
 
-    # Store message in SQLite
+    # Store the message in the database
     cursor.execute("INSERT INTO messages (sender, recipient, message, delivered) VALUES (?, ?, ?, 0)", 
                    (sender, recipient, message))
     conn.commit()
 
-    send_response(client_socket, {"status": "success", "message": "Message stored and delivered if recipient is online"})
-
-    # If recipient is online, deliver immediately
+    # Check if the recipient is online
     if recipient in clients:
-        send_response(clients[recipient], {"type": "message", "from": sender, "message": message})
+        recipient_sock = clients[recipient]
+        
+        # Deliver message immediately
+        send_response(recipient_sock, {"type": "message", "from": sender, "message": message})
 
+        # Mark message as delivered in the database
+        cursor.execute("UPDATE messages SET delivered = 1 WHERE sender = ? AND recipient = ? AND message = ?", 
+                       (sender, recipient, message))
+        conn.commit()
 
+        send_response(client_socket, {"status": "success", "message": "Message delivered instantly"})
+    else:
+        send_response(client_socket, {"status": "success", "message": "Message stored for offline delivery"})
 
 def handle_read_messages(client_socket, request):
     """Retrieves undelivered messages, allowing users to specify how many they want."""
@@ -147,6 +160,17 @@ def handle_list_accounts(client_socket, request):
     accounts = [row[0] for row in cursor.fetchall()]
 
     send_response(client_socket, {"status": "success", "accounts": accounts})
+
+def handle_exit(client_socket, request):
+    """Handles client disconnection and removes them from the active user list."""
+    username = request.get("username")
+
+    if username in clients:
+        del clients[username]  # Remove from active users
+        print(f"User {username} has disconnected.")
+    
+    send_response(client_socket, {"status": "success", "message": "User disconnected."})
+    client_socket.close()  # Close the socket
 
 
 def handle_binary_message(client_socket):
@@ -216,6 +240,9 @@ def service_connection(key, mask):
             handle_read_messages(sock, request)
         elif command == "LIST":  # 🆕 Add handling for "LIST" command
             handle_list_accounts(sock, request)
+        elif command == "EXIT":
+            handle_exit(sock, request)
+
 
 if __name__ == "__main__":
     # Start server
