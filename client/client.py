@@ -7,15 +7,9 @@ HOST = "127.0.0.1"
 PORT = 54400
 
 def send_request(sock, request):
-    """Sends a request to the server and properly handles multiple JSON responses."""
-    sock.sendall((json.dumps(request) + "\n").encode("utf-8"))  # Ensure newline separation
-
-    response_data = sock.recv(4096).decode("utf-8")  # Read as much data as possible
-
-    responses = response_data.strip().split("\n")  # ✅ Split multiple responses
-    parsed_responses = [json.loads(resp) for resp in responses]  # ✅ Parse each JSON separately
-
-    return parsed_responses[0] if len(parsed_responses) == 1 else parsed_responses  # ✅ Return appropriately
+    """Helper function to send a JSON request and receive a response."""
+    sock.sendall(json.dumps(request).encode("utf-8"))
+    return json.loads(sock.recv(1024).decode("utf-8"))
 
 
 import threading
@@ -63,7 +57,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     # listener_thread.start()
 
     while True:
-        action = input("Choose action: [SEND, READ, EXIT, LIST]: ").upper()
+        action = input("Choose action: [SEND, READ, EXIT, LIST, DELETE]: ").upper()
 
         if action == "SEND":
             recipient = input("Recipient: ")
@@ -96,6 +90,21 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 print("Registered Users:", response["accounts"])
             else:
                 print("Error retrieving accounts.")
+        elif action == "DELETE":
+            message_id = input("Enter message ID to delete (leave blank to delete all): ").strip()
+            request = {"command": "DELETE", "username": username}
+
+            if message_id:
+                request["message_id"] = int(message_id)
+
+            response = send_request(s, request)
+            
+            # ✅ Handle missing keys gracefully
+            if "message" in response:
+                print(response["message"])
+            else:
+                print("⚠️ Unexpected response from server:", response)
+
 
 
 

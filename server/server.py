@@ -147,6 +147,29 @@ def handle_list_accounts(client_socket, request):
 
     send_response(client_socket, {"status": "success", "accounts": accounts})
 
+def handle_delete_message(client_socket, request):
+    """Handles message deletion by ID or deleting all messages for the user."""
+    username = request.get("username")
+    message_id = request.get("message_id")  # Optional: delete a specific message
+
+    if not username:
+        send_response(client_socket, {"status": "error", "message": "Username required"})
+        return
+
+    if message_id:
+        # ✅ Delete a specific message
+        cursor.execute("DELETE FROM messages WHERE id = ? AND recipient = ?", (message_id, username))
+    else:
+        # ✅ Delete all messages for the user
+        cursor.execute("DELETE FROM messages WHERE recipient = ?", (username,))
+
+    conn.commit()
+    
+    # ✅ Ensure a response is always sent
+    send_response(client_socket, {"status": "success", "message": "Message(s) deleted successfully"})
+
+
+
 
 # ---------------------------- Socket Server ----------------------------
 def accept_wrapper(sock):
