@@ -64,7 +64,7 @@ class ChatClient:
                             response = json.loads(line)
                             self.incoming_queue.put(response)
                         except json.JSONDecodeError:
-                            print("Received invalid JSON:", line)
+                            self.update_chat("Received invalid JSON:", line)
         except OSError:
             # Socket probably closed
             pass
@@ -105,49 +105,42 @@ class ChatClient:
                 messagebox.showerror("Error", err_msg)
         else:
             # Unknown/unexpected format
-            print("Unknown response from server:", response)
+            self.update_chat("Unknown response from server:", response)
 
     def process_success_response(self, response):
         """
         Called if the server's response has {"status":"success", ...}.
-        We check for known fields like "messages", "accounts", or "message".
+        Display results in the chat window rather than the terminal.
         """
-        # Generic message
+        # Display generic message if present
         msg = response.get("message")
         if msg:
-            # We can optionally pop up or just print to console:
-            print("Server says:", msg)
+            self.update_chat(f"[SERVER] {msg}")
 
-        # If there's a 'messages' list, it might be from READ or LIST_MESSAGES
+        # Handle specific fields like 'messages' from READ or LIST_MESSAGES
         if "messages" in response:
             msg_list = response["messages"]
             if not msg_list:
-                messagebox.showinfo("Info", "No messages found.")
+                self.update_chat("[INFO] No messages found.")
             else:
-                # We'll display them in the chat box
-                # For "READ", these are unread messages
-                # For "LIST_MESSAGES", these could be all messages
                 self.update_chat("\n--- Retrieved Messages ---")
                 for msg_info in msg_list:
                     sender = msg_info["from"]
                     text = msg_info["message"]
                     timestamp = msg_info.get("timestamp", "???")
-                    status = msg_info.get("status")  # only present in LIST_MESSAGES
-                    if status:
-                        line = f"[{timestamp}] {sender} -> {self.username}: {text} ({status})"
-                    else:
-                        line = f"[{timestamp}] {sender} -> {self.username}: {text}"
+                    status = msg_info.get("status", "")  # For LIST_MESSAGES only
+                    line = f"[{timestamp}] {sender} -> {self.username}: {text} {f'({status})' if status else ''}"
                     self.update_chat(line)
                 self.update_chat("--- End of List ---\n")
 
-        # If there's an 'accounts' list, it might be from LIST
+        # Handle 'accounts' from LIST command
         if "accounts" in response:
             accounts = response["accounts"]
             if accounts:
-                accounts_str = "\n".join(accounts)
-                messagebox.showinfo("Users", f"Registered Users:\n{accounts_str}")
+                self.update_chat("[INFO] Registered Users:\n" + "\n".join(accounts))
             else:
-                messagebox.showinfo("Users", "No users found.")
+                self.update_chat("[INFO] No users found.")
+
 
         # A "delete account" or "delete messages" or other command might also have a "message" key
         # We already displayed the .get("message") above. So no further action needed

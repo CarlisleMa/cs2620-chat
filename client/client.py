@@ -20,6 +20,7 @@ def listen_for_responses(sock):
     Listens for all responses from the server and places them into a queue.
     Also logs how many bytes are received for each chunk of data.
     """
+    global stop_threads
     global total_bytes_received
     while not stop_threads:  # Only run if stop_threads is False
         try:
@@ -176,11 +177,19 @@ if __name__ == "__main__":
             elif action == "EXIT":
                 print("Closing connection...")
 
-                # Notify the server BEFORE closing the socket
+                # Notify the server of the exit
                 send_request(s, {"command": "EXIT", "username": username})
 
-                s.close()
+                # Stop the listener thread
+                stop_threads = True
+
+                # Join threads before closing
+                listener_thread.join(timeout=2)
+                message_processor_thread.join(timeout=2)
+
+                s.close()  # Close the socket connection
                 break  # Exit the client loop
+
 
             elif action == "LIST":
                 pattern = input("Enter search pattern (leave empty for all users): ")
