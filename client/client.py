@@ -4,6 +4,8 @@ import threading
 import select
 import sys
 import queue
+import argparse
+
 
 HOST = "127.0.0.1"
 PORT = 54400
@@ -106,6 +108,18 @@ def send_request(sock, request):
 
 
 if __name__ == "__main__":
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="Client for Chat Application")
+    parser.add_argument("--host", type=str, default="127.0.0.1", help="Server IP address (default: 127.0.0.1)")
+    parser.add_argument("--port", type=int, default=54400, help="Server port number (default: 54400)")
+    args = parser.parse_args()
+
+    # Assign values from arguments
+    HOST = args.host
+    PORT = args.port
+
+    print(f"Connecting to server at {HOST}:{PORT}...")
+
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.connect((HOST, PORT))
         print(f"Connected to server at {HOST}:{PORT}")

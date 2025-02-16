@@ -5,6 +5,7 @@ import json
 import bcrypt
 import types
 import struct
+import argparse
 
 # Initialize selector for handling multiple clients
 sel = selectors.DefaultSelector()
@@ -334,11 +335,20 @@ def service_connection(key, mask):
 
 
 if __name__ == "__main__":
-    # Start server
+    # Parse command-line arguments for host and port
+    parser = argparse.ArgumentParser(description="Chat Server")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Server IP address (default: 0.0.0.0)")
+    parser.add_argument("--port", type=int, default=54400, help="Server port number (default: 54400)")
+    args = parser.parse_args()
+
+    HOST = args.host
+    PORT = args.port
+
+    # Start server with dynamic host and port
     lsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    lsock.bind(("127.0.0.1", 54400))
+    lsock.bind((HOST, PORT))
     lsock.listen()
-    print("Server listening on 127.0.0.1:54400")
+    print(f"Server listening on {HOST}:{PORT}")
     
     lsock.setblocking(False)
     sel.register(lsock, selectors.EVENT_READ, data=None)
