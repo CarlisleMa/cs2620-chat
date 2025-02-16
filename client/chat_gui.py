@@ -5,44 +5,41 @@ import tkinter as tk
 from tkinter import messagebox, simpledialog
 import queue
 
-HOST = "127.0.0.1"
-PORT = 54400
-
 class ChatClient:
-    def __init__(self, root):
+    def __init__(self, root, host, port):
         self.root = root
+        self.host = host
+        self.port = port
         self.root.title("Chat Client")
 
         self.socket = None
         self.username = None
 
-        # A thread-safe queue to hold **all** incoming messages/responses from server
+        # Thread-safe queue for server responses
         self.incoming_queue = queue.Queue()
-
-        # A buffer for assembling partial data (when the server sends multiple JSONs)
         self.recv_buffer = ""
 
         self.create_login_screen()
+
 
     # ----------------------------------------------------------------------------------
     #                                 CONNECTION / I/O
     # ----------------------------------------------------------------------------------
     def connect_to_server(self):
-        """Connects to the server once. Also starts the background listener thread."""
+        """Connects to the server with custom host and port."""
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            self.socket.connect((HOST, PORT))
+            self.socket.connect((self.host, self.port))
         except ConnectionRefusedError:
-            messagebox.showerror("Connection Error", "Unable to connect to the server.")
+            messagebox.showerror("Connection Error", f"Unable to connect to {self.host}:{self.port}")
             self.root.quit()
             return
 
-        # Start the background thread to continuously read from the socket
         listener_thread = threading.Thread(target=self.listen_for_messages, daemon=True)
         listener_thread.start()
 
-        # Start polling the incoming queue in the main thread
         self.root.after(100, self.poll_incoming)
+
 
     def listen_for_messages(self):
         """
@@ -402,8 +399,18 @@ class ChatClient:
 
 def main():
     root = tk.Tk()
-    app = ChatClient(root)
+
+    # Prompt for server address and port before launching the client
+    host = simpledialog.askstring("Server Address", "Enter server IP address:", initialvalue="127.0.0.1")
+    port = simpledialog.askinteger("Server Port", "Enter server port:", initialvalue=54400)
+
+    if not host or not port:
+        messagebox.showerror("Error", "Server address and port are required.")
+        return
+
+    app = ChatClient(root, host, port)
     root.mainloop()
+
 
 if __name__ == "__main__":
     main()

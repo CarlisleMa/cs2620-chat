@@ -7,9 +7,6 @@ import queue
 import argparse
 
 
-HOST = "127.0.0.1"
-PORT = 54400
-
 # Queues & thread-stop flags
 response_queue = queue.Queue()
 stop_threads = False

@@ -178,15 +178,22 @@ def handle_list_accounts(client_socket, request):
     send_response(client_socket, {"status": "success", "accounts": accounts})
 
 def handle_exit(client_socket, request):
-    """Handles client disconnection and removes them from the active user list."""
+    """Handles client disconnection and removes them from active user list."""
     username = request.get("username")
 
     if username in clients:
         del clients[username]  # Remove from active users
         print(f"User {username} has disconnected.")
-    
+
+    # Properly unregister the socket from the selector
+    try:
+        sel.unregister(client_socket)
+    except KeyError:
+        print("Socket already unregistered.")
+
     send_response(client_socket, {"status": "success", "message": "User disconnected."})
     client_socket.close()  # Close the socket
+
 
 def handle_list_messages(client_socket, request):
     """Retrieves all messages (read & unread) for a user."""
@@ -304,7 +311,10 @@ def service_connection(key, mask):
         recv_data = sock.recv(1024)
         if not recv_data:
             print(f"Client {data.addr} disconnected.")
-            sel.unregister(sock)
+            try:
+                sel.unregister(sock)  # Unregister from selector
+            except KeyError:
+                pass
             sock.close()
             return
 
