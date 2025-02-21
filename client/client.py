@@ -4,9 +4,8 @@ import threading
 import select
 import sys
 import queue
+import argparse
 
-HOST = "127.0.0.1"
-PORT = 54400
 
 # Queues & thread-stop flags
 response_queue = queue.Queue()
@@ -21,6 +20,7 @@ def listen_for_responses(sock):
     Listens for all responses from the server and places them into a queue.
     Also logs how many bytes are received for each chunk of data.
     """
+    global stop_threads
     global total_bytes_received
     while not stop_threads:  # Only run if stop_threads is False
         try:
@@ -106,6 +106,18 @@ def send_request(sock, request):
 
 
 if __name__ == "__main__":
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="Client for Chat Application")
+    parser.add_argument("--host", type=str, default="127.0.0.1", help="Server IP address (default: 127.0.0.1)")
+    parser.add_argument("--port", type=int, default=54400, help="Server port number (default: 54400)")
+    args = parser.parse_args()
+
+    # Assign values from arguments
+    HOST = args.host
+    PORT = args.port
+
+    print(f"Connecting to server at {HOST}:{PORT}...")
+
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.connect((HOST, PORT))
         print(f"Connected to server at {HOST}:{PORT}")
@@ -165,11 +177,19 @@ if __name__ == "__main__":
             elif action == "EXIT":
                 print("Closing connection...")
 
-                # Notify the server BEFORE closing the socket
+                # Notify the server of the exit
                 send_request(s, {"command": "EXIT", "username": username})
 
-                s.close()
+                # Stop the listener thread
+                stop_threads = True
+
+                # Join threads before closing
+                listener_thread.join(timeout=2)
+                message_processor_thread.join(timeout=2)
+
+                s.close()  # Close the socket connection
                 break  # Exit the client loop
+
 
             elif action == "LIST":
                 pattern = input("Enter search pattern (leave empty for all users): ")

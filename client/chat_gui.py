@@ -5,44 +5,41 @@ import tkinter as tk
 from tkinter import messagebox, simpledialog
 import queue
 
-HOST = "127.0.0.1"
-PORT = 54400
-
 class ChatClient:
-    def __init__(self, root):
+    def __init__(self, root, host, port):
         self.root = root
+        self.host = host
+        self.port = port
         self.root.title("Chat Client")
 
         self.socket = None
         self.username = None
 
-        # A thread-safe queue to hold **all** incoming messages/responses from server
+        # Thread-safe queue for server responses
         self.incoming_queue = queue.Queue()
-
-        # A buffer for assembling partial data (when the server sends multiple JSONs)
         self.recv_buffer = ""
 
         self.create_login_screen()
+
 
     # ----------------------------------------------------------------------------------
     #                                 CONNECTION / I/O
     # ----------------------------------------------------------------------------------
     def connect_to_server(self):
-        """Connects to the server once. Also starts the background listener thread."""
+        """Connects to the server with custom host and port."""
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            self.socket.connect((HOST, PORT))
+            self.socket.connect((self.host, self.port))
         except ConnectionRefusedError:
-            messagebox.showerror("Connection Error", "Unable to connect to the server.")
+            messagebox.showerror("Connection Error", f"Unable to connect to {self.host}:{self.port}")
             self.root.quit()
             return
 
-        # Start the background thread to continuously read from the socket
         listener_thread = threading.Thread(target=self.listen_for_messages, daemon=True)
         listener_thread.start()
 
-        # Start polling the incoming queue in the main thread
         self.root.after(100, self.poll_incoming)
+
 
     def listen_for_messages(self):
         """
@@ -67,7 +64,7 @@ class ChatClient:
                             response = json.loads(line)
                             self.incoming_queue.put(response)
                         except json.JSONDecodeError:
-                            print("Received invalid JSON:", line)
+                            self.update_chat("Received invalid JSON:", line)
         except OSError:
             # Socket probably closed
             pass
@@ -108,49 +105,42 @@ class ChatClient:
                 messagebox.showerror("Error", err_msg)
         else:
             # Unknown/unexpected format
-            print("Unknown response from server:", response)
+            self.update_chat("Unknown response from server:", response)
 
     def process_success_response(self, response):
         """
         Called if the server's response has {"status":"success", ...}.
-        We check for known fields like "messages", "accounts", or "message".
+        Display results in the chat window rather than the terminal.
         """
-        # Generic message
+        # Display generic message if present
         msg = response.get("message")
         if msg:
-            # We can optionally pop up or just print to console:
-            print("Server says:", msg)
+            self.update_chat(f"[SERVER] {msg}")
 
-        # If there's a 'messages' list, it might be from READ or LIST_MESSAGES
+        # Handle specific fields like 'messages' from READ or LIST_MESSAGES
         if "messages" in response:
             msg_list = response["messages"]
             if not msg_list:
-                messagebox.showinfo("Info", "No messages found.")
+                self.update_chat("[INFO] No messages found.")
             else:
-                # We'll display them in the chat box
-                # For "READ", these are unread messages
-                # For "LIST_MESSAGES", these could be all messages
                 self.update_chat("\n--- Retrieved Messages ---")
                 for msg_info in msg_list:
                     sender = msg_info["from"]
                     text = msg_info["message"]
                     timestamp = msg_info.get("timestamp", "???")
-                    status = msg_info.get("status")  # only present in LIST_MESSAGES
-                    if status:
-                        line = f"[{timestamp}] {sender} -> {self.username}: {text} ({status})"
-                    else:
-                        line = f"[{timestamp}] {sender} -> {self.username}: {text}"
+                    status = msg_info.get("status", "")  # For LIST_MESSAGES only
+                    line = f"[{timestamp}] {sender} -> {self.username}: {text} {f'({status})' if status else ''}"
                     self.update_chat(line)
                 self.update_chat("--- End of List ---\n")
 
-        # If there's an 'accounts' list, it might be from LIST
+        # Handle 'accounts' from LIST command
         if "accounts" in response:
             accounts = response["accounts"]
             if accounts:
-                accounts_str = "\n".join(accounts)
-                messagebox.showinfo("Users", f"Registered Users:\n{accounts_str}")
+                self.update_chat("[INFO] Registered Users:\n" + "\n".join(accounts))
             else:
-                messagebox.showinfo("Users", "No users found.")
+                self.update_chat("[INFO] No users found.")
+
 
         # A "delete account" or "delete messages" or other command might also have a "message" key
         # We already displayed the .get("message") above. So no further action needed
@@ -402,8 +392,18 @@ class ChatClient:
 
 def main():
     root = tk.Tk()
-    app = ChatClient(root)
+
+    # Prompt for server address and port before launching the client
+    host = simpledialog.askstring("Server Address", "Enter server IP address:", initialvalue="127.0.0.1")
+    port = simpledialog.askinteger("Server Port", "Enter server port:", initialvalue=54400)
+
+    if not host or not port:
+        messagebox.showerror("Error", "Server address and port are required.")
+        return
+
+    app = ChatClient(root, host, port)
     root.mainloop()
+
 
 if __name__ == "__main__":
     main()

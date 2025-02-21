@@ -5,6 +5,7 @@ import json
 import bcrypt
 import types
 import struct
+import argparse
 
 # Initialize selector for handling multiple clients
 sel = selectors.DefaultSelector()
@@ -177,15 +178,22 @@ def handle_list_accounts(client_socket, request):
     send_response(client_socket, {"status": "success", "accounts": accounts})
 
 def handle_exit(client_socket, request):
-    """Handles client disconnection and removes them from the active user list."""
+    """Handles client disconnection and removes them from active user list."""
     username = request.get("username")
 
     if username in clients:
         del clients[username]  # Remove from active users
         print(f"User {username} has disconnected.")
-    
+
+    # Properly unregister the socket from the selector
+    try:
+        sel.unregister(client_socket)
+    except KeyError:
+        print("Socket already unregistered.")
+
     send_response(client_socket, {"status": "success", "message": "User disconnected."})
     client_socket.close()  # Close the socket
+
 
 def handle_list_messages(client_socket, request):
     """Retrieves all messages (read & unread) for a user."""
@@ -303,7 +311,10 @@ def service_connection(key, mask):
         recv_data = sock.recv(1024)
         if not recv_data:
             print(f"Client {data.addr} disconnected.")
-            sel.unregister(sock)
+            try:
+                sel.unregister(sock)  # Unregister from selector
+            except KeyError:
+                pass
             sock.close()
             return
 
@@ -334,11 +345,20 @@ def service_connection(key, mask):
 
 
 if __name__ == "__main__":
-    # Start server
+    # Parse command-line arguments for host and port
+    parser = argparse.ArgumentParser(description="Chat Server")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Server IP address (default: 0.0.0.0)")
+    parser.add_argument("--port", type=int, default=54400, help="Server port number (default: 54400)")
+    args = parser.parse_args()
+
+    HOST = args.host
+    PORT = args.port
+
+    # Start server with dynamic host and port
     lsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    lsock.bind(("127.0.0.1", 54400))
+    lsock.bind((HOST, PORT))
     lsock.listen()
-    print("Server listening on 127.0.0.1:54400")
+    print(f"Server listening on {HOST}:{PORT}")
     
     lsock.setblocking(False)
     sel.register(lsock, selectors.EVENT_READ, data=None)
