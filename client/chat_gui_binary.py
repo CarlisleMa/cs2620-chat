@@ -4,6 +4,63 @@ import threading
 import tkinter as tk
 from tkinter import messagebox, simpledialog
 import queue
+import struct
+
+
+
+# --- Define Command Codes ---
+CMD_REGISTER        = 1
+CMD_LOGIN           = 2
+CMD_SEND            = 3
+CMD_READ            = 4
+CMD_EXIT            = 5
+CMD_LIST_ACCOUNTS   = 6
+CMD_DELETE_MESSAGES = 7
+CMD_DELETE_ACCOUNT  = 8
+CMD_LIST_MESSAGES   = 9
+
+# --- Define TLV Field Types ---
+FIELD_USERNAME    = 11
+FIELD_PASSWORD    = 12
+FIELD_SENDER      = 13
+FIELD_RECIPIENT   = 14
+FIELD_MESSAGE     = 15
+FIELD_LIMIT       = 16
+FIELD_PATTERN     = 17
+FIELD_MESSAGE_IDS = 18
+
+# --- Map command strings to command codes ---
+COMMAND_MAPPING = {
+    "REGISTER": CMD_REGISTER,
+    "LOGIN": CMD_LOGIN,
+    "SEND": CMD_SEND,
+    "READ": CMD_READ,
+    "LIST": CMD_LIST_ACCOUNTS,
+    "DELETE": CMD_DELETE_MESSAGES,
+    "DELETE_ACCOUNT": CMD_DELETE_ACCOUNT,
+    "EXIT": CMD_EXIT,
+    "LIST_MESSAGES": CMD_LIST_MESSAGES
+}
+
+def pack_tlv(field_type, value):
+    """
+    Packs a TLV field:
+      - field_type: 1 byte
+      - field_length: 2 bytes (unsigned short, big-endian)
+      - field_value: UTF-8 encoded bytes
+    """
+    data = value.encode("utf-8")
+    return struct.pack("!BH", field_type, len(data)) + data
+
+def pack_message(command, tlv_list):
+    """
+    Packs a complete message with:
+      - Header: 1 byte command code, 4 bytes payload length
+      - Payload: concatenation of all TLV fields
+    """
+    payload = b"".join(tlv_list)
+    header = struct.pack("!BI", command, len(payload))
+    return header + payload
 
 class ChatClient:
     def __init__(self, root, host, port):
@@ -213,7 +270,7 @@ class ChatClient:
             "username": username,
             "password": password
         }
-        self.send_json(request)
+        self.send_binary(request)
 
         # Move to the chat screen now. If the server eventually says "error",
         # we'll pop an error message, but let's assume success for now:
@@ -226,7 +283,7 @@ class ChatClient:
         """
         if self.socket:
             # Send an EXIT command to remove from active user list
-            self.send_json({"command": "EXIT", "username": self.username})
+            self.send_binary({"command": "EXIT", "username": self.username})
             self.socket.close()
         self.socket = None
         self.username = None
@@ -256,7 +313,7 @@ class ChatClient:
             "recipient": recipient,
             "message": message
         }
-        self.send_json(request)
+        self.send_binary(request)
 
         # Show it in our local chat
         self.update_chat(f"You -> {recipient}: {message}")
@@ -273,7 +330,7 @@ class ChatClient:
             "username": self.username,
             "limit": 10
         }
-        self.send_json(request)
+        self.send_binary(request)
         # The response with "messages" will come in handle_server_response.
 
     def list_users(self):
@@ -289,7 +346,7 @@ class ChatClient:
             "command": "LIST",
             "pattern": pattern
         }
-        self.send_json(request)
+        self.send_binary(request)
 
     def list_all_messages(self):
         """Ask the server for all messages, read or unread."""
@@ -301,7 +358,7 @@ class ChatClient:
             "command": "LIST_MESSAGES",
             "username": self.username
         }
-        self.send_json(request)
+        self.send_binary(request)
         # The server responds with {"status":"success","messages":[...]}.
 
     def delete_messages(self):
@@ -315,7 +372,7 @@ class ChatClient:
             "command": "LIST_MESSAGES",
             "username": self.username
         }
-        self.send_json(request)
+        self.send_binary(request)
 
         # We can't do a synchronous block here, but ideally we'd wait for the
         # messages, show them, then ask the user for the IDs. Instead, a simpler
@@ -338,7 +395,7 @@ class ChatClient:
                 "username": self.username,
                 "message_ids": ids_list
             }
-            self.send_json(delete_request)
+            self.send_binary(delete_request)
 
         # We'll give the user 1 second to see the "LIST_MESSAGES" result in the chat area
         self.root.after(1000, ask_for_ids)
@@ -357,7 +414,7 @@ class ChatClient:
             "command": "DELETE_ACCOUNT",
             "username": self.username
         }
-        self.send_json(request)
+        self.send_binary(request)
         # The server will close the connection for us, or we can do it ourselves:
         # We handle that in 'process_success_response' if we want.
 
@@ -371,6 +428,61 @@ class ChatClient:
             self.socket.sendall(text.encode("utf-8"))
         except Exception as e:
             messagebox.showerror("Error", f"Failed to send data: {e}")
+    
+    # --- New sending function using our custom binary protocol ---
+    def send_binary(self, data):
+        """
+        Converts a request dictionary (with a "command" key) into a binary message
+        according to our custom protocol, then sends it via the socket.
+        """
+        # Extract command string and map it to a command code.
+        cmd_str = data.get("command")
+        if cmd_str not in COMMAND_MAPPING:
+            messagebox.showerror("Error", f"Unknown command: {cmd_str}")
+            return
+        command_code = COMMAND_MAPPING[cmd_str]
+        
+        # Build TLV fields based on the command.
+        tlvs = []
+        if cmd_str in ("REGISTER", "LOGIN"):
+            # Both require username and password.
+            username = data.get("username", "")
+            password = data.get("password", "")
+            tlvs.append(pack_tlv(FIELD_USERNAME, username))
+            tlvs.append(pack_tlv(FIELD_PASSWORD, password))
+        elif cmd_str == "SEND":
+            tlvs.append(pack_tlv(FIELD_SENDER, data.get("sender", "")))
+            tlvs.append(pack_tlv(FIELD_RECIPIENT, data.get("recipient", "")))
+            tlvs.append(pack_tlv(FIELD_MESSAGE, data.get("message", "")))
+        elif cmd_str == "READ":
+            tlvs.append(pack_tlv(FIELD_USERNAME, data.get("username", "")))
+            # Convert limit to string if necessary.
+            tlvs.append(pack_tlv(FIELD_LIMIT, str(data.get("limit", 10))))
+        elif cmd_str == "LIST":
+            tlvs.append(pack_tlv(FIELD_PATTERN, data.get("pattern", "")))
+        elif cmd_str == "DELETE":
+            tlvs.append(pack_tlv(FIELD_USERNAME, data.get("username", "")))
+            # If message_ids is a list, join it as a comma-separated string.
+            ids = data.get("message_ids", "")
+            if isinstance(ids, list):
+                ids = ",".join(ids)
+            tlvs.append(pack_tlv(FIELD_MESSAGE_IDS, ids))
+        elif cmd_str == "LIST_MESSAGES":
+            tlvs.append(pack_tlv(FIELD_USERNAME, data.get("username", "")))
+        elif cmd_str == "DELETE_ACCOUNT":
+            tlvs.append(pack_tlv(FIELD_USERNAME, data.get("username", "")))
+        elif cmd_str == "EXIT":
+            tlvs.append(pack_tlv(FIELD_USERNAME, data.get("username", "")))
+        else:
+            messagebox.showerror("Error", f"Unhandled command: {cmd_str}")
+            return
+
+        # Pack the command code and TLV list into a binary message.
+        binary_message = pack_message(command_code, tlvs)
+        try:
+            self.socket.sendall(binary_message)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to send binary message: {e}")
 
     # ----------------------------------------------------------------------------------
     #                           HELPER: UPDATE THE CHAT WINDOW
