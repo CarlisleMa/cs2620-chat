@@ -1,4 +1,5 @@
 import threading
+import time
 import tkinter as tk
 from tkinter import messagebox, simpledialog
 import queue
@@ -87,7 +88,9 @@ class ChatClient:
             else:
                 self.update_chat("\n--- Retrieved Messages ---")
                 for msg in response.messages:
-                    line = f"[{msg.timestamp}] id=[{msg.id}]: {msg.sender} -> {self.username}: {msg.message}"
+                    # Convert the epoch timestamp to a human-readable format.
+                    formatted_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(msg.timestamp))
+                    line = f"[{formatted_time}] id=[{msg.id}]: {msg.sender} -> {self.username}: {msg.message}"
                     self.update_chat(line)
                 self.update_chat("--- End of List ---\n")
 
@@ -97,7 +100,6 @@ class ChatClient:
                 self.update_chat("[INFO] No users found.")
             else:
                 self.update_chat("[INFO] Registered Users:\n" + "\n".join(response.accounts))
-
 
     # ------------------------------ GUI Screens ------------------------------
     def create_login_screen(self):

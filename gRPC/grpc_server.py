@@ -135,6 +135,7 @@ class ChatServiceServicer(chat_pb2_grpc.ChatServiceServicer):
         if not username:
             return chat_pb2.ReadMessagesResponse(messages=[])
 
+        # Retrieve unread messages for the user.
         cursor.execute(
             "SELECT id, sender, message, timestamp FROM messages WHERE recipient = ? AND delivered = 0 ORDER BY id ASC LIMIT ?",
             (username, limit)
@@ -148,13 +149,17 @@ class ChatServiceServicer(chat_pb2_grpc.ChatServiceServicer):
 
         message_list = []
         for msg in messages:
-            log_message_size(msg[1], username, msg[2])
+            # Convert the stored timestamp (a string, e.g., "2025-02-26 12:35:00") to epoch.
+            try:
+                ts_epoch = int(time.mktime(time.strptime(msg[3], "%Y-%m-%d %H:%M:%S")))
+            except Exception:
+                ts_epoch = 0  # Fallback if conversion fails.
             chat_msg = chat_pb2.ChatMessage(
                 id=msg[0],
                 sender=msg[1],
                 to=username,
                 message=msg[2],
-                timestamp=int(time.time())
+                timestamp=ts_epoch
             )
             message_list.append(chat_msg)
         return chat_pb2.ReadMessagesResponse(messages=message_list)
@@ -193,16 +198,23 @@ class ChatServiceServicer(chat_pb2_grpc.ChatServiceServicer):
         if not username:
             return chat_pb2.ListMessagesResponse(messages=[])
         
-        cursor.execute("SELECT id, sender, message, timestamp, delivered FROM messages WHERE recipient = ? ORDER BY id ASC", (username,))
+        cursor.execute(
+        "SELECT id, sender, message, timestamp, delivered FROM messages WHERE recipient = ? ORDER BY id ASC",
+        (username,)
+        )
         messages = cursor.fetchall()
         message_list = []
         for msg in messages:
+            try:
+                ts_epoch = int(time.mktime(time.strptime(msg[3], "%Y-%m-%d %H:%M:%S")))
+            except Exception:
+                ts_epoch = 0  # Fallback if parsing fails.
             chat_msg = chat_pb2.ChatMessage(
                 id=msg[0],
                 sender=msg[1],
                 to=username,
                 message=msg[2],
-                timestamp=int(time.time())
+                timestamp=ts_epoch
             )
             message_list.append(chat_msg)
         return chat_pb2.ListMessagesResponse(messages=message_list)
