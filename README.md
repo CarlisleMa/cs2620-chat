@@ -111,3 +111,21 @@ Both implementations store user data and messages in an SQLite database, but the
   header = struct.pack("!BBB", len(sender_bytes), len(recipient_bytes), len(message_bytes))
   payload = header + sender_bytes + recipient_bytes + message_bytes
   sock.sendall(payload)
+
+
+Comparison and Results
+
+We find that binary messages are always smaller than JSON messages, with shorter messages benefitting the most from binary encoding. This is because as messages increase in length, JSON overhead becomes less significant.
+
+| Message Length | JSON Size (bytes) | Binary Size (bytes) | Size Reduction (%) |
+|---------------|------------------|-------------------|------------------|
+| 3 chars      | 76 bytes         | 17 bytes         | 77.63% smaller  |
+| 19 chars     | 92 bytes         | 33 bytes         | 64.13% smaller  |
+| 44 chars     | 117 bytes        | 58 bytes         | 50.43% smaller  |
+| 144 chars    | 217 bytes        | 158 bytes        | 27.19% smaller  |
+| 276 chars    | 349 bytes        | 290 bytes        | 16.91% smaller  |
+
+
+JSON overhead occurs because of text-based formatting, with keys ("command", "sender", "message") and extra characters ("{}", ":", "). Even a single-word message ("Hi!") takes 76 bytes in JSON. Binary encoding packs data more efficiently, without the need for headers.
+
+With respect to efficiency and scalability, binary is highly efficient, saving bandwidth and improving latency. However, JSON is more human-readable and easier to debug. Thus, for efficiency purposes and low-latency messaging systems, binary is preferred, but for debugging and extensibility purposes (APIs, web-based messaging when human readability is preferred), JSON is the way to go.
