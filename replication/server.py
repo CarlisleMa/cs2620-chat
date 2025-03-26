@@ -122,6 +122,7 @@ class ChatServer(chat_pb2_grpc.ChatServiceServicer, chat_pb2_grpc.ReplicationSer
     def become_leader(self):
         self.is_leader = True
         self.leader_address = self.address
+        print(f"Server {self.id} elected as leader at {self.address}")
         self.synchronize_database()
         for peer in self.peers:
             try:
