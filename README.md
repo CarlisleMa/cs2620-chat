@@ -3,7 +3,7 @@
 ## By Alex Geng and Carl Ma
 
 ## Engineering Notebook for Replication Implementation
-📔 [https://docs.google.com/document/d/1w9PmqjK77rJCrC0eqTVDdmDO3WythQmmjYu8MH-yuvc/edit?usp=sharing](url)
+📔 [https://docs.google.com/document/d/1w9PmqjK77rJCrC0eqTVDdmDO3WythQmmjYu8MH-yuvc/edit?usp=sharing]
 
 
 
