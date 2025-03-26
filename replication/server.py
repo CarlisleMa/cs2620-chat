@@ -11,6 +11,7 @@ import chat_pb2_grpc
 
 import threading
 import time
+import json
 
 
 # ----- Helper Function -----
@@ -22,13 +23,16 @@ def log_message_size(sender, recipient, message):
     print(f"Message Size: {total_size} bytes | {sender} -> {recipient}: {message}")
 
 class ChatServer(chat_pb2_grpc.ChatServiceServicer, chat_pb2_grpc.ReplicationServiceServicer):
-    def __init__(self, server_id, address, peers):
+    def __init__(self, server_id, address, config_file="config.json"):
         self.id = server_id
         self.address = address
-        self.peers = peers
+        with open(config_file, "r") as f:  # Use config_file here
+            config_data = json.load(f)    # Assign loaded JSON to config_data
+        self.all_servers = {server["id"]: server["address"] for server in config_data["servers"]}
+        self.peers = [addr for sid, addr in self.all_servers.items() if sid != self.id]
         self.is_leader = False
         self.leader_address = None  # Initially unknown
-        self.alive_peers = {peer: 0 for peer in peers}  # Last heartbeat timestamp
+        self.alive_peers = {peer: 0 for peer in self.peers}  # Last heartbeat timestamp
         self.conn = sqlite3.connect(f"chat_db_{server_id}.db", check_same_thread=False)
         self.cursor = self.conn.cursor()
         self.active_subscriptions = {}  # Only leader uses this
@@ -423,13 +427,10 @@ def serve(host, port):
         server.stop(0)
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser(description="gRPC Chat Server")
     parser.add_argument("--id", type=int, required=True, help="Server ID (1-5)")
     parser.add_argument("--address", type=str, required=True, help="My address (host:port)")
-    parser.add_argument("--peers", type=str, nargs="+", required=True, help="List of peer addresses")
+    parser.add_argument("--config", type=str, default="config.json", help="Path to config file")
     args = parser.parse_args()
-    # Example: python server.py --id 1 --address 127.0.0.1:50051 --peers 127.0.0.1:50052 127.0.0.1:50053 127.0.0.1:50054 127.0.0.1:50055
-
-    server = ChatServer(args.id, args.address, args.peers)
+    server = ChatServer(args.id, args.address, args.config)
     server.start()

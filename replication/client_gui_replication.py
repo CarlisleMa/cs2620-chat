@@ -4,15 +4,19 @@ import tkinter as tk
 from tkinter import messagebox, simpledialog
 import queue
 import grpc
+import json
 
 import chat_pb2
 import chat_pb2_grpc
 
 class ChatClient:
-    def __init__(self, root, host, port):
+    def __init__(self, root, host, port, config_file="config.json"):
         self.root = root
         self.host = host
         self.port = port
+        with open(config_file, "r") as f:
+            config = json.load(f)
+        self.server_list = [server["address"] for server in config["servers"]]
         self.root.title("Chat Client")
 
         self.channel = None
@@ -44,8 +48,7 @@ class ChatClient:
 
     def get_leader(self):
         """Queries the current server for the leader's address, falling back to other servers if needed."""
-        server_list = ["127.0.0.1:50051", "127.0.0.1:50052", "127.0.0.1:50053", "127.0.0.1:50054", "127.0.0.1:50055"]
-        for server in server_list:
+        for server in self.server_list:
             try:
                 if server == f"{self.host}:{self.port}":
                     response = self.stub.GetLeader(chat_pb2.GetLeaderRequest())
@@ -361,6 +364,7 @@ def main():
     root = tk.Tk()
     host = simpledialog.askstring("Server Address", "Enter server IP address:", initialvalue="127.0.0.1")
     port = simpledialog.askinteger("Server Port", "Enter server port:", initialvalue=50051)
+    config_file = "config.json"  # Could also prompt for this
     if not host or not port:
         messagebox.showerror("Error", "Server address and port are required.")
         return
