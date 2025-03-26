@@ -12,8 +12,6 @@ import chat_pb2_grpc
 import threading
 import time
 
-# Global dictionary to store active subscription queues for instant delivery.
-active_subscriptions = {}
 
 # ----- Helper Function -----
 def log_message_size(sender, recipient, message):
@@ -168,8 +166,11 @@ class ChatServer(chat_pb2_grpc.ChatServiceServicer, chat_pb2_grpc.ReplicationSer
             username, password_hash = parts[1], parts[2].encode()
             self.cursor.execute("INSERT OR IGNORE INTO users (username, password_hash) VALUES (?, ?)", (username, password_hash))
         elif cmd == "SendMessage":
-            id, sender, recipient, message, timestamp = int(parts[1]), parts[2], parts[3], parts[4], int(parts[5])
-            self.cursor.execute("INSERT OR IGNORE INTO messages (id, sender, recipient, message, timestamp, delivered) VALUES (?, ?, ?, ?, ?, 0)", (id, sender, recipient, message, timestamp))
+                id, sender, recipient, message, timestamp = int(parts[1]), parts[2], parts[3], parts[4], int(parts[5])
+                self.cursor.execute(
+                    "INSERT OR IGNORE INTO messages (id, sender, recipient, message, timestamp, delivered) VALUES (?, ?, ?, ?, ?, 0)",
+                    (id, sender, recipient, message, timestamp)
+                )
         elif cmd == "DeleteMessages":
             recipient, message_ids = parts[1], [int(i) for i in parts[2].split(",")]
             placeholders = ",".join("?" for _ in message_ids)
@@ -213,8 +214,8 @@ class ChatServer(chat_pb2_grpc.ChatServiceServicer, chat_pb2_grpc.ReplicationSer
             return chat_pb2.LogoutResponse(success=False, message="Request must be sent to the leader")
         username = request.username
         # Remove subscription if it exists.
-        if username in active_subscriptions:
-            del active_subscriptions[username]
+        if username in self.active_subscriptions:
+            del self.active_subscriptions[username]
             return chat_pb2.LogoutResponse(success=True, message="Logged out successfully")
         else:
             return chat_pb2.LogoutResponse(success=False, message="User not subscribed to instant messages")
@@ -225,12 +226,16 @@ class ChatServer(chat_pb2_grpc.ChatServiceServicer, chat_pb2_grpc.ReplicationSer
         self.cursor.execute("INSERT OR REPLACE INTO sequence (name, value) VALUES ('message_id', COALESCE((SELECT value FROM sequence WHERE name = 'message_id'), 0) + 1)")
         self.cursor.execute("SELECT value FROM sequence WHERE name = 'message_id'")
         message_id = self.cursor.fetchone()[0]
-        operation = f"SendMessage:{message_id}:{request.sender}:{request.to}:{request.message}:{int(time.time())}"
+        current_time = int(time.time())  # Get current Unix timestamp
+        operation = f"SendMessage:{message_id}:{request.sender}:{request.to}:{request.message}:{current_time}"
         if self.replicate_operation(operation):
             self.apply_operation(operation)
             if request.to in self.active_subscriptions:
-                chat_msg = chat_pb2.ChatMessage(id=message_id, sender=request.sender, to=request.to, message=request.message, timestamp=int(time.time()))
+                chat_msg = chat_pb2.ChatMessage(id=message_id, sender=request.sender, to=request.to, message=request.message, timestamp=current_time)
                 self.active_subscriptions[request.to].put(chat_msg)
+                print(f"Server {self.id}: Pushed message {message_id} to {request.to}’s queue")
+            else:
+                print(f"Server {self.id}: No active subscription for {request.to}")
             return chat_pb2.SendMessageResponse(success=True, message="Message sent")
         return chat_pb2.SendMessageResponse(success=False, message="Failed to replicate")
 
@@ -289,7 +294,7 @@ class ChatServer(chat_pb2_grpc.ChatServiceServicer, chat_pb2_grpc.ReplicationSer
         print(f"User {username} subscribed for instant messages.")
         # Create a subscription queue for this user.
         sub_queue = queue.Queue()
-        active_subscriptions[username] = sub_queue
+        self.active_subscriptions[username] = sub_queue
 
         try:
             while context.is_active():
@@ -299,8 +304,8 @@ class ChatServer(chat_pb2_grpc.ChatServiceServicer, chat_pb2_grpc.ReplicationSer
                 except queue.Empty:
                     continue
         finally:
-            if username in active_subscriptions:
-                del active_subscriptions[username]
+            if username in self.active_subscriptions:
+                del self.active_subscriptions[username]
 
     def ListAccounts(self, request, context):
         if not self.is_leader:

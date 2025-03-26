@@ -32,13 +32,15 @@ class ChatClient:
         self.channel = grpc.insecure_channel(f"{self.host}:{self.port}")
         self.stub = chat_pb2_grpc.ChatServiceStub(self.channel)
         leader_address = self.get_leader()
-        if leader_address is None:
-            messagebox.showerror("Connection Error", "Unable to find the leader server. Please try again later.")
-            return
-        if leader_address != f"{self.host}:{self.port}":
-            host, port = leader_address.split(":")
-            self.channel.close()
-            self.connect_to_server(host, int(port))
+        if leader_address:
+            if leader_address != f"{self.host}:{self.port}":
+                self.channel.close()
+                self.host, self.port = leader_address.split(":")
+                self.channel = grpc.insecure_channel(f"{self.host}:{self.port}")
+                self.stub = chat_pb2_grpc.ChatServiceStub(self.channel)
+                self.update_chat(f"[INFO] Redirected to leader at {leader_address}")
+        else:
+            self.update_chat("[ERROR] No leader found, retrying connection...")
 
     def get_leader(self):
         """Queries the current server for the leader's address, falling back to other servers if needed."""
@@ -60,7 +62,6 @@ class ChatClient:
         return None
     # ------------------------------ Instant Message Subscription ------------------------------
     def subscribe_instant_messages(self):
-        """Subscribes to instant messages, reconnecting to the leader if the stream fails."""
         while True:
             try:
                 subscribe_request = chat_pb2.SubscribeRequest(username=self.username)
@@ -71,15 +72,13 @@ class ChatClient:
                 leader_address = self.get_leader()
                 if leader_address:
                     if leader_address != f"{self.host}:{self.port}":
-                        host, port = leader_address.split(":")
                         self.channel.close()
-                        self.connect_to_server(host, int(port))
-                        self.update_chat(f"[INFO] Reconnected to new leader at {leader_address}")
+                        self.connect_to_server(*leader_address.split(":"))
                     else:
-                        self.update_chat("[INFO] Already on leader, retrying subscription")
+                        self.update_chat("[INFO] On leader, retrying subscription")
                 else:
-                    self.update_chat("[ERROR] Could not find new leader, retrying...")
-                time.sleep(1)  # Wait before retrying
+                    self.update_chat("[ERROR] No leader found, retrying...")
+                time.sleep(1)
 
     def poll_incoming(self):
         """Called periodically in the GUI thread to process any instant messages."""
