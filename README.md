@@ -1,11 +1,13 @@
 
-# Project Title: Customized Wiring Protocol
+# Project Title: Chat App with Replication
 ## By Alex Geng and Carl Ma
-
 ## Engineering Notebook for Replication Implementation
 📔 [https://docs.google.com/document/d/1w9PmqjK77rJCrC0eqTVDdmDO3WythQmmjYu8MH-yuvc/edit?usp=sharing]
 
 
+
+# Project Title: Customized Wiring Protocol
+## By Alex Geng and Carl Ma
 
 ## Engineering Notebook for Wiring Protocol
 📔 [View the Engineering Notebook on Google Docs](https://docs.google.com/document/d/1t55yTAW73h1h-Jwun9jXmagnJGOjMwCCPUcAQvqWMWk/edit?usp=sharing)
